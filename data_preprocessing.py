@@ -6,8 +6,9 @@ import pickle
 
 # STEP 1: LOAD DATA
 movies = pd.read_csv('movies_metadata.csv', low_memory=False)
-credits = pd.read_csv('credits.csv')
-keywords = pd.read_csv('keywords.csv')
+movies = movies.head(5000)
+ratings = pd.read_csv("ratings_small.csv")
+links = pd.read_csv("links_small.csv")
 
 # STEP 2: CLEAN DATA
 movies = movies[['id', 'title', 'genres']]
