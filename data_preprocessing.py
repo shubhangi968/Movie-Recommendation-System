@@ -10,7 +10,7 @@ credits = pd.read_csv('credits.csv')
 keywords = pd.read_csv('keywords.csv')
 
 # 🔥 reduce dataset size (VERY IMPORTANT for deployment)
-movies = movies.head(5000)
+movies = movies.head(3000)
 
 # ---------------- STEP 2: CLEAN DATA ----------------
 movies = movies[['id', 'title', 'genres']]
