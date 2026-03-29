@@ -2,6 +2,7 @@
 
 CineMatch is a content-based movie recommendation system that suggests similar movies using machine learning techniques based on genres, keywords, and metadata.
 ---
+🌐 **Live Demo:** [Click here to view](https://movie-recommendation-system-4z7xzevpr6fje2njtfghvp.streamlit.app)
 
 ## 🚀 Features
 
@@ -58,12 +59,9 @@ Movie recommendation system/
 ## ▶️ Run Locally
 
 ```bash
-git clone https://github.com/shubhangi968/Movie-Recommendation-System.git
 cd Movie-Recommendation-System
 pip install -r requirements.txt
 streamlit run app.py
-
-🌐 **Live Demo:** [Click here to view](https://movie-recommendation-system-4z7xzevpr6fje2njtfghvp.streamlit.app)
 
 
 ---
