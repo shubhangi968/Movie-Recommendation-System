@@ -1,6 +1,6 @@
 import pandas as pd
 import ast
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pickle
 
@@ -89,8 +89,8 @@ movies['tags'] = movies['tags'].apply(lambda x: " ".join(x))
 new_df = movies[['id', 'title', 'tags']]
 
 # ---------------- STEP 10: VECTORIZATION ----------------
-cv = CountVectorizer(max_features=5000, stop_words='english')
-vectors = cv.fit_transform(new_df['tags']).toarray()
+tfidf = TfidfVectorizer(max_features=5000, stop_words='english')
+vectors = tfidf.fit_transform(new_df['tags']).toarray()
 
 # ---------------- STEP 11: SIMILARITY ----------------
 similarity = cosine_similarity(vectors)
