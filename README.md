@@ -49,10 +49,10 @@ Movie recommendation system/
 ## 📸 Screenshots
 
 ### Home Page
-![Home](images/home.png)
+![Home](images\home.png)
 
 ### Recommendations
-![Recommendations](images/recommendations.png)
+![Recommendations](images\recommendations.png)
 
 
 ## ▶️ Run Locally
@@ -63,9 +63,7 @@ cd Movie-Recommendation-System
 pip install -r requirements.txt
 streamlit run app.py
 
-🌐 Live Demo
-
-https://movie-recommendation-system-4z7xzevpr6fje2njtfghvp.streamlit.app
+🌐 Live Demo link https://movie-recommendation-system-4z7xzevpr6fje2njtfghvp.streamlit.app
 
 ---
 
