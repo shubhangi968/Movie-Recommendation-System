@@ -49,21 +49,22 @@ Movie recommendation system/
 ## 📸 Screenshots
 
 ### Home Page
-![Home](images\home.png)
+![Home](https://github.com/shubhangi968/Movie-Recommendation-System/blob/main/images/home.png)
 
 ### Recommendations
-![Recommendations](images\recommendations.png)
+![Recommendations](https://github.com/shubhangi968/Movie-Recommendation-System/blob/main/images/recommendations.png)
 
 
 ## ▶️ Run Locally
 
 ```bash
-git clone https://github.com/your-username/Movie-Recommendation-System.git
+git clone https://github.com/shubhangi968/Movie-Recommendation-System.git
 cd Movie-Recommendation-System
 pip install -r requirements.txt
 streamlit run app.py
 
-🌐 Live Demo link https://movie-recommendation-system-4z7xzevpr6fje2njtfghvp.streamlit.app
+🌐 **Live Demo:** [Click here to view](https://movie-recommendation-system-4z7xzevpr6fje2njtfghvp.streamlit.app)
+
 
 ---
 
