@@ -2,6 +2,7 @@ import pickle
 import streamlit as st
 import requests
 import base64
+import html 
 
 #  PAGE CONFIG 
 st.set_page_config(page_title="CineMatch", layout="wide")
@@ -47,13 +48,22 @@ def fetch_movie_details(movie_name):
         return poster_url, overview, rating
 
     return "https://via.placeholder.com/300x450?text=No+Image", "No description available", "N/A"
-    print (poster_path)
+   
 
     
         
 #  LOAD DATA 
 movies = pickle.load(open('movies.pkl', 'rb'))
 similarity = pickle.load(open('similarity.pkl', 'rb'))
+
+# ---------------- HELPER FUNCTION ----------------
+def get_common_features(movie1, movie2):
+    tags1 = set(movie1)
+    tags2 = set(movie2)
+
+    common = tags1.intersection(tags2)
+
+    return list(common)[:5]
 
 #  RECOMMEND FUNCTION 
 def recommend(movie):
@@ -66,7 +76,7 @@ def recommend(movie):
         key=lambda x: x[1]
     )[1:6]
 
-    names, posters, overviews, ratings = [], [], [], []
+    names, posters, overviews, ratings,explanations = [], [], [], [], []
 
     for i in movies_list:
         movie_name = movies.iloc[i[0]].title
@@ -75,10 +85,19 @@ def recommend(movie):
 
         names.append(movie_name)
         posters.append(poster)
+        # explanation
+        
+        common = get_common_features(
+            movies.iloc[movie_index].tags.split(),
+            movies.iloc[i[0]].tags.split()
+        )
+    
+        explanations.append(", ".join(common))
+
         overviews.append(overview)
         ratings.append(rating)
 
-    return names, posters, overviews, ratings
+    return names, posters,overviews, ratings, explanations
 
 #  CSS 
 st.markdown("""
@@ -167,30 +186,48 @@ if search:
     else:
         st.warning("No movie found")
 
+
 #  RECOMMEND 
 if st.button("✨ Recommend"):
     if selected_movie:
-        names, posters, overviews, ratings = recommend(selected_movie)
+        names, posters, overviews, ratings, explanations = recommend(selected_movie)
 
         st.subheader("✨ Top Picks For You")
         cols = st.columns(5)
 
-        for i in range(5):
+        for i in range(len(posters)):
             with cols[i]:
                 img = posters[i] if posters[i] else "https://via.placeholder.com/300x450"
-
+                explanation_text = explanations[i] if i < len(explanations) else "Similar genre & cast"
+                
+                safe_img = html.escape(img)
+                safe_overview = html.escape(overviews[i][:120] if overviews[i] else "No description")
+                safe_title = html.escape(names[i])
+                safe_reason = html.escape(explanation_text)
+                
                 st.markdown(f"""
                 <div class="movie-card">
                     <div class="poster-box">
-                        <img src="{img}">
+                        <img src="{safe_img}">
                         <div class="overlay">
-                            <h4>⭐ {ratings[i]}</h4>
-                            <p>{overviews[i][:120]}...</p>
+                            <h4>⭐ {round(ratings[i],1) if isinstance(ratings[i], float) else ratings[i]}</h4>
+                            <p>{safe_overview}...</p>
                         </div>
                     </div>
-                    <div class="movie-title">{names[i]}</div>
-                </div>
                 """, unsafe_allow_html=True)
+
+                # 👉 Title separately
+                st.markdown(f"""
+                <div class="movie-title">{safe_title}</div>
+                """, unsafe_allow_html=True)
+
+                # 👉 Reason separately
+                st.markdown(f"""
+                <p style="font-size:12px; color:#cccccc; text-align:center; margin-top:5px;">
+                    Because of: {safe_reason}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
     else:
         st.warning("Please select a movie first")

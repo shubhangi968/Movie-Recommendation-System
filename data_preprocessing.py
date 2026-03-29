@@ -83,10 +83,11 @@ movies['tags'] = (
     movies['crew']
 )
 
+movies['tags_list'] = movies['tags']   # keep list version
 movies['tags'] = movies['tags'].apply(lambda x: " ".join(x))
 
 # ---------------- STEP 9: FINAL DATAFRAME ----------------
-new_df = movies[['id', 'title', 'tags']]
+new_df = movies[['id', 'title', 'tags', 'tags_list']]
 
 # ---------------- STEP 10: VECTORIZATION ----------------
 tfidf = TfidfVectorizer(max_features=5000, stop_words='english')
