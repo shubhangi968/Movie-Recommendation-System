@@ -1,233 +1,228 @@
-import pickle
-import streamlit as st
-import requests
 import base64
-import html 
+import html
+import os
+import pickle
+from concurrent.futures import ThreadPoolExecutor
+import numpy as np
+import requests
+import streamlit as st
+from gemini_helper import movie_expert_reply
 
-#  PAGE CONFIG 
-st.set_page_config(page_title="CineMatch", layout="wide")
-def set_background():
-    with open("bg.jpg", "rb") as f:
-        data = f.read()
-    encoded = base64.b64encode(data).decode()
+st.set_page_config(page_title="CineMatch", layout="wide")  # must be first
 
-    st.markdown(
-        f"""
-        <style>
-        .stApp {{
-            background-image: 
-                linear-gradient(rgba(20,20,20,0.6), rgba(20,20,20,0.65)),
-                url("data:image/jpg;base64,{encoded}");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-set_background()
+NO_POSTER = "https://placehold.co/300x450?text=No+Image"
 
-#  TMDB FUNCTION 
-def fetch_movie_details(movie_name):
-    url = f"https://tmdb.lewagon.com/search/movie?query={movie_name}"
-    data = requests.get(url).json()
+# ---------- DATA (loaded once) ----------
+@st.cache_resource
+def load_data():
+    with open("movies.pkl", "rb") as f:
+        movies = pickle.load(f)
+    with open("similarity.pkl", "rb") as f:
+        similarity = pickle.load(f)
+    title_to_idx = {}
+    for i, t in enumerate(movies["title"]):
+        title_to_idx.setdefault(t, i)
+    return movies, similarity, title_to_idx
 
-    if data["results"]:
-        movie = data["results"][0]
 
-        poster_path = movie.get("poster_path")
-        overview = movie.get("overview")
-        rating = movie.get("vote_average")
-        
-        if poster_path:
-            poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
-        else:
-            poster_url = "https://via.placeholder.com/300x450?text=No+Image"
-        return poster_url, overview, rating
+movies, similarity, title_to_idx = load_data()
 
-    return "https://via.placeholder.com/300x450?text=No+Image", "No description available", "N/A"
-   
 
-    
-        
-#  LOAD DATA 
-movies = pickle.load(open('movies.pkl', 'rb'))
-similarity = pickle.load(open('similarity.pkl', 'rb'))
+# ---------- STYLE ----------
+@st.cache_data
+def background_css():  # encoded once, not on every rerun
+    try:
+        with open("bg.jpg", "rb") as f:
+            enc = base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        return ""
+    return (".stApp{background-image:linear-gradient(rgba(20,20,20,.6),"
+            f"rgba(20,20,20,.65)),url('data:image/jpeg;base64,{enc}');"
+            "background-size:cover;background-position:center;"
+            "background-attachment:fixed}")
 
-# ---------------- HELPER FUNCTION ----------------
-def get_common_features(movie1, movie2):
-    tags1 = set(movie1)
-    tags2 = set(movie2)
 
-    common = tags1.intersection(tags2)
+CSS = """
+.title{text-align:center;font-size:52px;font-weight:bold}
+.subtitle{text-align:center;color:#ccc;margin-bottom:30px}
+.movie-card{width:100%;background:rgba(255,255,255,.05);padding:10px;
+  border-radius:15px;transition:.3s}
+.movie-card:hover:not(:has(details[open])){transform:scale(1.03);
+  box-shadow:0 10px 25px rgba(255,75,75,.5)}
+.movie-title{text-align:center;font-size:14px;margin-top:8px;min-height:40px;
+  overflow-wrap:anywhere}
+.reason{font-size:12px;color:#ccc;text-align:center;margin-top:5px}
 
-    return list(common)[:5]
+/* poster (clickable) */
+summary.poster-box{display:block;list-style:none;cursor:pointer;width:100%;
+  height:260px;overflow:hidden;border-radius:12px;position:relative}
+summary.poster-box::-webkit-details-marker{display:none}
+.poster-box>img{width:100%;height:100%;object-fit:cover}
+.overlay{position:absolute;inset:0;background:rgba(0,0,0,.85);color:#fff;
+  opacity:0;transition:.3s;padding:10px;font-size:12px;overflow:auto;
+  box-sizing:border-box}
+.poster-box:hover .overlay{opacity:1}
 
-#  RECOMMEND FUNCTION 
-def recommend(movie):
-    movie_index = movies[movies['title'] == movie].index[0]
-    distances = similarity[movie_index]
+/* enlarged view: summary becomes the dark backdrop, .modal the card */
+details[open]>summary.poster-box{position:fixed;inset:0;height:auto;
+  border-radius:0;z-index:999994;background:rgba(0,0,0,.85);cursor:zoom-out}
+details[open]>summary.poster-box>*{display:none}
+.modal{display:none}
+details[open] .modal{display:flex;flex-wrap:wrap;gap:20px;position:fixed;
+  top:50%;left:50%;transform:translate(-50%,-50%);z-index:999995;
+  width:min(720px,92vw);max-height:85vh;overflow:auto;background:#1b1b1f;
+  color:#fff;border-radius:16px;padding:20px;box-sizing:border-box;
+  box-shadow:0 20px 60px rgba(0,0,0,.7)}
+.modal img{width:240px;max-width:100%;border-radius:12px;object-fit:cover}
+.modal .info{flex:1;min-width:220px}
+.modal h2{margin:0 0 6px}
+.modal .hint{color:#888;font-size:12px}
 
-    movies_list = sorted(
-        list(enumerate(distances)),
-        reverse=True,
-        key=lambda x: x[1]
-    )[1:6]
+/* floating chat button */
+div[data-testid="stPopover"]{position:fixed;bottom:22px;right:22px;z-index:999999}
+div[data-testid="stPopover"]>button{border-radius:30px;background:#e64b55;
+  color:#fff;border:none;padding:12px 20px;font-weight:bold;
+  box-shadow:0 4px 18px rgba(0,0,0,.35)}
+div[data-testid="stPopover"]>button:hover{background:#c93642;color:#fff}
+div[data-testid="stPopoverBody"]{width:min(380px,90vw)}
+"""
+st.markdown(f"<style>{background_css()}{CSS}</style>", unsafe_allow_html=True)
 
-    names, posters, overviews, ratings,explanations = [], [], [], [], []
 
-    for i in movies_list:
-        movie_name = movies.iloc[i[0]].title
+# ---------- TMDB ----------
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch(name):
+    r = requests.get("https://tmdb.lewagon.com/search/movie",
+                     params={"query": name}, timeout=5)
+    r.raise_for_status()
+    results = r.json().get("results") or []
+    if not results:
+        return dict(poster=NO_POSTER, overview="No description available.",
+                    rating=None, year="")
+    m = results[0]
+    path = m.get("poster_path")
+    return dict(
+        poster=f"https://image.tmdb.org/t/p/w500{path}" if path else NO_POSTER,
+        overview=m.get("overview") or "No description available.",
+        rating=m.get("vote_average"),
+        year=(m.get("release_date") or "")[:4])
 
-        poster, overview, rating = fetch_movie_details(movie_name)
 
-        names.append(movie_name)
-        posters.append(poster)
-        # explanation
-        
-        common = get_common_features(
-            movies.iloc[movie_index].tags.split(),
-            movies.iloc[i[0]].tags.split()
-        )
-    
-        explanations.append(", ".join(common))
+def fetch_movie_details(name):  # failures are not cached, so they can retry
+    try:
+        return _fetch(name)
+    except (requests.RequestException, ValueError):
+        return dict(poster=NO_POSTER, rating=None, year="",
+                    overview="Movie details are temporarily unavailable.")
 
-        overviews.append(overview)
-        ratings.append(rating)
 
-    return names, posters,overviews, ratings, explanations
+# ---------- RECOMMEND ----------
+def recommend(title):
+    i = title_to_idx[title]
+    row = np.asarray(similarity[i])
+    top = np.argpartition(-row, 6)[:6]            # fast top-6, no full sort
+    top = [j for j in top[np.argsort(-row[top])] if j != i][:5]
+    names = movies["title"].iloc[top].tolist()
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        details = list(ex.map(fetch_movie_details, names))
+    own = set(str(movies.iloc[i]["tags"]).split())
+    out = []
+    for j, name, d in zip(top, names, details):
+        common = list(own & set(str(movies.iloc[j]["tags"]).split()))[:5]
+        out.append({**d, "title": name,
+                    "reason": ", ".join(common) or "Similar movie features"})
+    return out
 
-#  CSS 
-st.markdown("""
-<style>
-.title {
-    text-align: center;
-    font-size: 52px;
-    font-weight: bold;
-}
 
-.subtitle {
-    text-align: center;
-    color: #cccccc;
-    margin-bottom: 30px;
-}
+def esc(text):
+    return html.escape(" ".join(str(text).split()))  # one line: keeps HTML intact
 
-.movie-card {
-    width: 100%;
-    height: 360px;
-    background: rgba(255,255,255,0.05);
-    padding: 10px;
-    border-radius: 15px;
-    transition: 0.3s;
-}
-.movie-card:hover {
-    transform: scale(1.08);
-    box-shadow: 0px 10px 25px rgba(255,75,75,0.5);
-}
 
-.poster-box {
-    width: 100%;
-    height: 260px;
-    overflow: hidden;
-    border-radius: 12px;
-    position: relative;
-}
+def card_html(m):
+    rating = f"{m['rating']:.1f}" if isinstance(m["rating"], (int, float)) else "N/A"
+    title, poster = esc(m["title"]), html.escape(m["poster"])
+    year = f" ({esc(m['year'])})" if m["year"] else ""
+    return (
+        '<div class="movie-card"><details>'
+        f'<summary class="poster-box"><img src="{poster}" loading="lazy">'
+        f'<div class="overlay"><h4>⭐ {rating}</h4>'
+        f'<p>{esc(m["overview"][:120])}...</p><small>Click to enlarge</small></div></summary>'
+        f'<div class="modal"><img src="{poster}"><div class="info">'
+        f'<h2>{title}{year}</h2><p>⭐ {rating}</p><p>{esc(m["overview"])}</p>'
+        f'<p><b>Because of:</b> {esc(m["reason"])}</p>'
+        '<p class="hint">Click outside to close</p></div></div></details>'
+        f'<div class="movie-title">{title}</div>'
+        f'<p class="reason">Because of: {esc(m["reason"])}</p></div>')
 
-.poster-box img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
 
-.overlay {
-    position: absolute;
-    bottom: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.85);
-    color: white;
-    opacity: 0;
-    transition: 0.3s;
-    padding: 10px;
-    font-size: 12px;
-    overflow: hidden;
-}
+# ---------- MAIN PAGE ----------
+st.markdown('<div class="title">🎬 CineMatch</div>'
+            '<div class="subtitle">Discover movies you’ll love 🍿</div>',
+            unsafe_allow_html=True)
 
-.poster-box:hover .overlay {
-    opacity: 1;
-}
-
-.movie-title {
-    text-align: center;
-    font-size: 14px;
-    margin-top: 8px;
-    height: 40px;
-    overflow: hidden;
-}
-</style>
-""", unsafe_allow_html=True)
-
-#  HEADER 
-st.markdown('<div class="title">🎬 CineMatch</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Discover movies you’ll love 🍿</div>', unsafe_allow_html=True)
-
-#  SEARCH 
 search = st.text_input("🔍 Search for a movie")
-
-selected_movie = None
-
+selected = None
 if search:
-    filtered = [m for m in movies['title'].values if search.lower() in m.lower()]
-
-    if filtered:
-        selected_movie = st.selectbox("Select movie", filtered)
+    matches = movies.loc[movies["title"].str.contains(
+        search, case=False, na=False, regex=False), "title"].tolist()
+    if matches:
+        selected = st.selectbox("Select movie", matches)
     else:
         st.warning("No movie found")
 
-
-#  RECOMMEND 
 if st.button("✨ Recommend"):
-    if selected_movie:
-        names, posters, overviews, ratings, explanations = recommend(selected_movie)
-
-        st.subheader("✨ Top Picks For You")
-        cols = st.columns(5)
-
-        for i in range(len(posters)):
-            with cols[i]:
-                img = posters[i] if posters[i] else "https://via.placeholder.com/300x450"
-                explanation_text = explanations[i] if i < len(explanations) else "Similar genre & cast"
-                
-                safe_img = html.escape(img)
-                safe_overview = html.escape(overviews[i][:120] if overviews[i] else "No description")
-                safe_title = html.escape(names[i])
-                safe_reason = html.escape(explanation_text)
-                
-                st.markdown(f"""
-                <div class="movie-card">
-                    <div class="poster-box">
-                        <img src="{safe_img}">
-                        <div class="overlay">
-                            <h4>⭐ {round(ratings[i],1) if isinstance(ratings[i], float) else ratings[i]}</h4>
-                            <p>{safe_overview}...</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                # 👉 Title separately
-                st.markdown(f"""
-                <div class="movie-title">{safe_title}</div>
-                """, unsafe_allow_html=True)
-
-                # 👉 Reason separately
-                st.markdown(f"""
-                <p style="font-size:12px; color:#cccccc; text-align:center; margin-top:5px;">
-                    Because of: {safe_reason}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-
+    if selected:
+        with st.spinner("Finding movies you'll love..."):
+            st.session_state.recs = recommend(selected)
     else:
-        st.warning("Please select a movie first")
+        st.warning("Please select a movie first.")
+
+# Results live in session_state so they survive chat messages and reruns.
+if st.session_state.get("recs"):
+    st.subheader("✨ Top Picks For You")
+    for col, m in zip(st.columns(5), st.session_state.recs):
+        col.markdown(card_html(m), unsafe_allow_html=True)
+
+
+# ---------- FLOATING AI CHAT ----------
+def get_api_key():
+    try:
+        return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        return os.getenv("GEMINI_API_KEY", "")
+
+
+GREETING = ("Hi! I'm CineMatch Movie Expert 🍿 I can compare films, explain "
+            "endings, and give spoiler-free reviews.")
+history = st.session_state.setdefault(
+    "cine_chat_history", [{"role": "assistant", "content": GREETING}])
+
+
+@st.fragment  # chat reruns only itself, not the whole page
+def chat():
+    with st.popover("💬 AI Assist"):
+        st.markdown("### 🎬 CineMatch AI")
+        box = st.container()
+        with st.form("cine_ai_chat_form", clear_on_submit=True):
+            msg = st.text_input("Your message",
+                                placeholder="Ask anything about a movie...")
+            sent = st.form_submit_button("Send")
+        if sent and msg.strip():
+            history.append({"role": "user", "content": msg.strip()})
+            key = get_api_key()
+            if not key:
+                answer = "Gemini API key not found. Add GEMINI_API_KEY to secrets."
+            else:
+                try:
+                    with st.spinner("Thinking..."):
+                        answer = movie_expert_reply(msg.strip(), key, history[:-1])
+                except Exception as e:
+                    answer = f"AI error: {type(e).__name__}: {e}"
+            history.append({"role": "assistant", "content": answer})
+        with box:
+            for m in history:
+                with st.chat_message(m["role"]):
+                    st.markdown(m["content"])
+
+
+chat()

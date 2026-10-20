@@ -4,4 +4,9 @@ __pycache__/
 *.csv
 posters/
 .env
+.env*
 *.pkl
+.streamlit/secrets.tom
+test.py
+*.py[cod]
+venv/
