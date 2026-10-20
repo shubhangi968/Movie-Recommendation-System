@@ -6,7 +6,7 @@ posters/
 .env
 .env*
 *.pkl
-.streamlit/secrets.tom
+.streamlit/secrets.toml
 test.py
 *.py[cod]
 venv/
