@@ -40,20 +40,11 @@ CineMatch is a content-based movie recommendation system that suggests similar m
 Movie recommendation system/
 │── app.py
 │── movies.pkl
-│── similarity.pkl (not uploaded)
+│── similarity.pkl 
 │── requirements.txt
+│── gemini.helpers.py
 │── README.md
 
-
----
-
-## 📸 Screenshots
-
-### Home Page
-![Home](https://github.com/shubhangi968/Movie-Recommendation-System/blob/main/images/home.png)
-
-### Recommendations
-![Recommendations](https://github.com/shubhangi968/Movie-Recommendation-System/blob/main/images/recommendations.png)
 
 
 ## ▶️ Run Locally
