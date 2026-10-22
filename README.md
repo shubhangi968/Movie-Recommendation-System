@@ -52,8 +52,8 @@ cd Movie-Recommendation-System
 pip install -r requirements.txt
 streamlit run app.py
 
----
 
 👩‍💻 Author
 
 Shubhangi Agrawal
+

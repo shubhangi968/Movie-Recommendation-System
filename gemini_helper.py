@@ -10,8 +10,8 @@ from google.genai import types
 # Flash-Lite is the fastest and has the most generous free quota.
 # Switch back with:  export GEMINI_MODEL=gemini-3.8-flash
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-TIMEOUT_MS = 25000  # milliseconds: fail fast instead of hanging
-
+print("Gemini model configured:", MODEL)
+TIMEOUT_MS = 60000  # milliseconds: fail fast instead of hanging
 
 def clean_json(text):
     """Strip ```json fences and any text around the JSON (this was missing)."""
@@ -19,7 +19,6 @@ def clean_json(text):
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
     match = re.search(r"(\{.*\}|\[.*\])", text, flags=re.DOTALL)
     return match.group(1) if match else text
-
 
 def _config(max_tokens, json_mode):
     kwargs = dict(max_output_tokens=max_tokens, temperature=0.4)
@@ -32,7 +31,6 @@ def _config(max_tokens, json_mode):
             thinking_config=types.ThinkingConfig(thinking_level="low"), **kwargs)
     except Exception:  # older SDK without thinking_level
         return types.GenerateContentConfig(**kwargs)
-
 
 def generate_text(prompt, api_key, max_tokens=400, json_mode=False):
     start = time.time()
@@ -54,7 +52,6 @@ def generate_text(prompt, api_key, max_tokens=400, json_mode=False):
     finally:
         print(f"[gemini] {MODEL} took {time.time() - start:.1f}s", flush=True)
 
-
 def suggest_seed_titles(user_query, api_key):
     prompt = f"""You are a movie recommendation assistant.
 User request: {user_query}
@@ -69,7 +66,6 @@ Return only the JSON array."""
     if not isinstance(titles, list):
         raise RuntimeError("Gemini did not return a JSON list.")
     return [str(t).strip() for t in titles if str(t).strip()][:3]
-
 
 def fetch_movie_details(movie_name):
     try:
@@ -87,13 +83,11 @@ def fetch_movie_details(movie_name):
     except (requests.RequestException, ValueError):
         return None, "Movie details are unavailable.", None
 
-
 def fetch_many_details(movie_names):
     """Fetch all posters in parallel. Returns {title: (poster, overview, rating)}."""
     with ThreadPoolExecutor(max_workers=6) as pool:
         results = list(pool.map(fetch_movie_details, movie_names))
     return dict(zip(movie_names, results))
-
 
 def explain_recommendations(user_query, seed_titles, candidates, api_key):
     if not candidates:
@@ -115,7 +109,6 @@ key is the exact recommended title and each value is the explanation."""
     allowed = {m["title"] for m in candidates}
     return {t: e for t, e in explanations.items()
             if t in allowed and isinstance(e, str)}
-
 
 def movie_expert_reply(user_message, api_key, history=None):
     history = history or []
@@ -143,7 +136,7 @@ CORE RULES
 1. Answer the user's actual question directly before adding extra information.
 2. Be conversational, warm, clear, and concise. Avoid generic introductions, repetitive wording, and unnecessary long lists.
 3. Personalize recommendations using the user's stated mood, favorite movies, genres, language, preferred era, runtime, and other preferences. Use conversation history when relevant.
-4. When asked for a recommendation, normally suggest 1–3 movies, explain briefly why each fits, and identify the strongest match. If the user asks for one movie, give one.
+4. When asked for a recommendation, normally suggest 1-3 movies, explain briefly why each fits, and identify the strongest match. If the user asks for one movie, give one.
 5. For each recommendation, provide the title and release year when known, a brief spoiler-free premise, genre, and why it suits the user's request. Include ratings or runtime only when reliable data is available.
 6. Never invent movie titles, release dates, cast members, directors, plot details, quotes, awards, ratings, streaming availability, or other facts. If uncertain, say so clearly or omit the detail.
 7. Prefer movie titles and metadata verified by the application's movie dataset or trusted movie API. Never claim that you checked a source if you did not.
@@ -173,8 +166,7 @@ def _chat_config(system):
             thinking_config=types.ThinkingConfig(thinking_level="low"), **kwargs)
     except Exception:
         return types.GenerateContentConfig(**kwargs)
- 
- 
+
 def stream_movie_expert(history, api_key, screen_context=""):
     """Yields the reply token by token. history = [{'role','content'}, ...]."""
     turns = [m for m in history
