@@ -11,7 +11,7 @@ from google.genai import types
 # Switch back with:  export GEMINI_MODEL=gemini-3.8-flash
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 print("Gemini model configured:", MODEL)
-TIMEOUT_MS = 60000  # milliseconds: fail fast instead of hanging
+TIMEOUT_MS = 120000  # milliseconds: fail fast instead of hanging
 
 def clean_json(text):
     """Strip ```json fences and any text around the JSON (this was missing)."""
@@ -184,7 +184,7 @@ def stream_movie_expert(history, api_key, screen_context=""):
     client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)))
+            timeout=TIMEOUT_MS, retry_options=types.HttpRetryOptions(attempts=3,initial_delay=1, exp_base=2,max_delay=8)))
     start, got = time.time(), False
     for chunk in client.models.generate_content_stream(
             model=MODEL, contents=contents, config=_chat_config(system)):
