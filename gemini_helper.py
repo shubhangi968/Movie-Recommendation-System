@@ -6,10 +6,21 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 from google import genai
 from google.genai import types
+from google.genai import errors
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-print("Gemini model configured:", MODEL)
-TIMEOUT_MS = 120000  
+# comma-separated backups, tried in order if the main model is busy
+FALLBACKS = [m.strip() for m in
+             os.getenv("GEMINI_FALLBACK_MODELS", "gemini-flash-latest").split(",")
+             if m.strip()]
+MODELS = [MODEL] + [m for m in FALLBACKS if m != MODEL]
+TIMEOUT_MS = 45000  # 120 s is too long for a chat; fail fast and retry
+RETRYABLE = (429, 500, 503, 504)
+
+def _is_busy(exc):
+    """True for overloaded / rate-limited / timeout errors worth retrying."""
+    return (getattr(exc, "code", None) in RETRYABLE
+            or "Timeout" in type(exc).__name__)  
 
 def clean_json(text):
     """Strip ```json fences and any text around the JSON (this was missing)."""
@@ -30,23 +41,34 @@ def _config(max_tokens, json_mode):
 
 def generate_text(prompt, api_key, max_tokens=400, json_mode=False):
     start = time.time()
+    last_exc = None
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=TIMEOUT_MS,
+            retry_options=types.HttpRetryOptions(attempts=1)),
+    )
     try:
-        client = genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(
-                timeout=TIMEOUT_MS,
-                retry_options=types.HttpRetryOptions(attempts=1)),
-        )
-        response = client.models.generate_content(
-            model=MODEL, contents=prompt, config=_config(max_tokens, json_mode))
-        if not response.text:
-            raise RuntimeError("Gemini returned an empty response.")
-        return response.text.strip()
-    except Exception as exc:
+        for model in MODELS:
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(
+                        model=model, contents=prompt,
+                        config=_config(max_tokens, json_mode))
+                    if not response.text:
+                        raise RuntimeError("Gemini returned an empty response.")
+                    return response.text.strip()
+                except Exception as exc:
+                    last_exc = exc
+                    if _is_busy(exc):
+                        time.sleep(1.5 * (attempt + 1))  # retry same model
+                        continue
+                    break  # other error: go to the next model
         raise RuntimeError(
-            f"Gemini request failed ({type(exc).__name__}): {exc}") from exc
+            f"Gemini request failed ({type(last_exc).__name__}): {last_exc}"
+        ) from last_exc
     finally:
-        print(f"[gemini] {MODEL} took {time.time() - start:.1f}s", flush=True)
+        print(f"[gemini] took {time.time() - start:.1f}s", flush=True)
 
 def suggest_seed_titles(user_query, api_key):
     prompt = f"""You are a movie recommendation assistant.
@@ -177,17 +199,31 @@ def stream_movie_expert(history, api_key, screen_context=""):
     if screen_context:
         system += f"\nMovies currently shown on the user's screen: {screen_context}."
  
-    client = genai.Client(
+        client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
             timeout=TIMEOUT_MS, retry_options=types.HttpRetryOptions(attempts=1)))
-    start, got = time.time(), False
-    for chunk in client.models.generate_content_stream(
-            model=MODEL, contents=contents, config=_chat_config(system)):
-        if chunk.text:
-            if not got:
-                print(f"[gemini] first token after {time.time() - start:.1f}s", flush=True)
-            got = True
-            yield chunk.text
-    if not got:
-        raise RuntimeError("Gemini returned an empty response.")
+    last_exc = None
+    for model in MODELS:
+        for attempt in range(2):
+            got = False
+            try:
+                for chunk in client.models.generate_content_stream(
+                        model=model, contents=contents, config=_chat_config(system)):
+                    if chunk.text:
+                        got = True
+                        yield chunk.text
+                if got:
+                    return
+                raise RuntimeError("Gemini returned an empty response.")
+            except Exception as exc:
+                if got:      # text was already shown, so don't restart the reply
+                    raise
+                last_exc = exc
+                if _is_busy(exc):
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                break
+    raise RuntimeError(
+        f"Gemini request failed ({type(last_exc).__name__}): {last_exc}"
+    ) from last_exc
